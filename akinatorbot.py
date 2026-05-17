@@ -24,7 +24,7 @@ bot = telebot.TeleBot(TOKEN)
 # Tarjimon funksiyasi (Inglizchadan O'zbekchaga va teskari)
 def to_uzbek(text):
     try:
-        return GoogleTranslator(source='en', target='uz').translate(text)
+        return GoogleTranslator(source='auto', target='uz').translate(text)
     except:
         return text
 
@@ -64,9 +64,14 @@ def start_game(message):
     bot.send_message(message.chat.id, "🧠 Akinator miyasini ishga tushirmoqda, biroz kuting...")
     
     try:
-        # Yangi Akinator o'yinini boshlash
+        # Yangi Akinator o'yinini muqobil server (en2) orqali boshlaymiz
         aki = akinator.Akinator()
-        q = aki.start_game(language="en") # inglizcha boshlaymiz, keyin tarjima qilamiz
+        
+        # AGAR EN ISHLAMASA, EN2 SERVERIDAN FOYDALANAMIZ
+        try:
+            q = aki.start_game(language="en")
+        except:
+            q = aki.start_game(language="en2") # Bu zaxira server, xatolikni oldini oladi
         
         # Foydalanuvchi sessiyasini saqlash
         user_games[user_id] = aki
@@ -81,7 +86,9 @@ def start_game(message):
             reply_markup=get_akinator_keyboard()
         )
     except Exception as e:
-        bot.send_message(message.chat.id, "❌ O'yinni boshlashda xatolik yuz berdi. Qaytadan urinib ko'ring.")
+        # Haqiqiy xatolikni ko'rish uchun log yozamiz
+        print(f"Xatolik yuz berdi: {e}")
+        bot.send_message(message.chat.id, "❌ Akinator serverlarida bandlik. Bir necha soniyadan so'ng qayta bosing.")
 
 # Akinator tugmalari bosilganda (Callback query)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("aki_"))
@@ -90,7 +97,6 @@ def process_akinator(call):
     chat_id = call.message.chat.id
     message_id = call.message.message_id
     
-    # Agar foydalanuvchi o'yinni boshlamagan bo'lsa
     if user_id not in user_games:
         bot.answer_callback_query(call.id, "Iltimos, o'yinni qaytadan boshlang!", show_alert=True)
         return
@@ -101,7 +107,6 @@ def process_akinator(call):
     try:
         bot.answer_callback_query(call.id, "O'ylanmoqda... 🤔")
 
-        # Orqaga qaytish bosilganda
         if action == "back":
             try:
                 q = aki.back()
@@ -115,8 +120,6 @@ def process_akinator(call):
                 bot.answer_callback_query(call.id, "Bundan ortiq orqaga qaytib bo'lmaydi!", show_alert=True)
             return
 
-        # Aks holda javobni yuborish va keyingi savolga o'tish
-        # Akinator 80% dan yuqori aniqlikda javob topsa, o'yinni to'xtatadi
         if aki.progression <= 80:
             q = aki.answer(int(action))
             uz_question = to_uzbek(q)
@@ -127,7 +130,6 @@ def process_akinator(call):
                 parse_mode="Markdown", reply_markup=get_akinator_keyboard()
             )
         else:
-            # Personajni taxmin qilish qismi
             aki.win()
             guess = aki.first_guess
             
@@ -142,13 +144,11 @@ def process_akinator(call):
             )
             bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=result_text, parse_mode="Markdown")
             
-            # Personaj rasmini yuborish
             try:
                 bot.send_photo(chat_id, guess['absolute_picture_path'], caption=f"Ushbu personajmidi: {uz_name}? ✨")
             except:
                 bot.send_message(chat_id, f"Rasm yuklab bo'lmadi, lekin siz o'ylagan odam: **{uz_name}** edi! 🥷", parse_mode="Markdown")
             
-            # Sessiyani tozalash
             del user_games[user_id]
 
     except Exception as e:
